@@ -1,0 +1,165 @@
+import os
+from datetime import datetime
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable, KeepTogether
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+class PDFGenerator:
+    """
+    Automated PDF Audit Report Builder:
+    Compiles cryptographic evaluation, packet statistics, metadata analysis,
+    side-channel reconstruction findings, embedded charts, and security recommendations.
+    """
+
+    def __init__(self, output_dir=None):
+        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.output_dir = output_dir or os.path.join(self.base_dir, "reports")
+        os.makedirs(self.output_dir, exist_ok=True)
+
+    def generate_report(self, csv_path: str, charts_dir: str, stats: dict, security_data: dict) -> str:
+        pdf_path = os.path.join(self.output_dir, "E2EE_Security_Audit_Report.pdf")
+
+        doc = SimpleDocTemplate(
+            pdf_path,
+            pagesize=letter,
+            rightMargin=36,
+            leftMargin=36,
+            topMargin=36,
+            bottomMargin=36
+        )
+
+        styles = getSampleStyleSheet()
+
+        # Custom Styles
+        title_style = ParagraphStyle(
+            'DocTitle',
+            parent=styles['Heading1'],
+            fontName='Helvetica-Bold',
+            fontSize=22,
+            leading=26,
+            textColor=colors.HexColor('#0f172a'),
+            alignment=0,
+            spaceAfter=4
+        )
+
+        subtitle_style = ParagraphStyle(
+            'DocSubtitle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=11,
+            leading=14,
+            textColor=colors.HexColor('#64748b'),
+            spaceAfter=15
+        )
+
+        h2_style = ParagraphStyle(
+            'Heading2Custom',
+            parent=styles['Heading2'],
+            fontName='Helvetica-Bold',
+            fontSize=14,
+            leading=18,
+            textColor=colors.HexColor('#0f172a'),
+            spaceBefore=12,
+            spaceAfter=6
+        )
+
+        body_style = ParagraphStyle(
+            'BodyCustom',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor('#334155'),
+            spaceAfter=6
+        )
+
+        verdict_style = ParagraphStyle(
+            'VerdictStyle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=12,
+            leading=16,
+            textColor=colors.HexColor('#991b1b'),
+            spaceAfter=6
+        )
+
+        elements = []
+
+        # Title Block
+        elements.append(Paragraph("E2EE Security & Metadata Leakage Audit Report", title_style))
+        elements.append(Paragraph(f"Cybersecurity Evaluation | System Target: Secure Messaging Application | Date: {datetime.now().strftime('%B %d, %Y - %H:%M:%S')}", subtitle_style))
+        elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0284c7'), spaceAfter=15))
+
+        # Executive Summary / Verdict
+        elements.append(Paragraph("1. Executive Summary & Verdict", h2_style))
+        
+        verdict_bg = colors.HexColor('#fef2f2') if security_data.get("verdict") == "VUNLERABLE" else colors.HexColor('#fffbeb')
+        verdict_border = colors.HexColor('#ef4444') if security_data.get("verdict") == "VUNLERABLE" else colors.HexColor('#f59e0b')
+
+        verdict_content = [
+            [Paragraph(f"<b>FINAL AUDIT VERDICT:</b> {security_data.get('verdict_title', 'PARTIAL E2EE CONFIDENTIALITY')}", verdict_style)],
+            [Paragraph(security_data.get('verdict_description', ''), body_style)]
+        ]
+        
+        verdict_table = Table(verdict_content, colWidths=[540])
+        verdict_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), verdict_bg),
+            ('BOX', (0,0), (-1,-1), 1.5, verdict_border),
+            ('PADDING', (0,0), (-1,-1), 10),
+        ]))
+        elements.append(verdict_table)
+        elements.append(Spacer(1, 12))
+
+        # Quantitative Scores Table
+        elements.append(Paragraph("2. Confidentiality Assessment Scores", h2_style))
+        score_data = [
+            ["Metric Parameter", "Score / Rating", "Evaluation Status"],
+            ["Encryption Strength (AES-256-GCM)", f"{security_data.get('encryption_score')}%", "SECURE (Authenticated)"],
+            ["Network Metadata Exposure", f"{security_data.get('exposure_score')}%", "EXPOSED (IPs, Ports, Timing)"],
+            ["Traffic Reconstruction Vulnerability", f"{security_data.get('reconstruction_vulnerability')}%", "VULNERABLE (Size Correlation)"],
+            ["Overall Confidentiality Score", f"{security_data.get('confidentiality_score')}%", f"RISK LEVEL: {security_data.get('risk_level')}"]
+        ]
+        
+        t_scores = Table(score_data, colWidths=[200, 140, 200])
+        t_scores.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0f172a')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 9),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('PADDING', (0,0), (-1,-1), 6),
+            ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#f8fafc')),
+        ]))
+        elements.append(t_scores)
+        elements.append(Spacer(1, 15))
+
+        # Metadata Findings & Side-Channel Analysis
+        elements.append(Paragraph("3. Technical Findings & Exposed Metadata", h2_style))
+        for finding in security_data.get("findings", []):
+            elements.append(Paragraph(f"• {finding}", body_style))
+        elements.append(Spacer(1, 10))
+
+        # Embedded Charts Section
+        elements.append(Paragraph("4. Visual Evidence & Traffic Charts", h2_style))
+        chart_files = ["packet_size_time.png", "packet_frequency.png", "metadata_exposure.png"]
+        for cfile in chart_files:
+            cpath = os.path.join(charts_dir, cfile)
+            if os.path.exists(cpath):
+                elements.append(Image(cpath, width=480, height=240))
+                elements.append(Spacer(1, 10))
+
+        # Remediation Recommendations
+        elements.append(Paragraph("5. Security Mitigation Recommendations", h2_style))
+        recs = [
+            "<b>Cryptographic Padding (ISO/IEC 7816-4):</b> Pad all encrypted payloads to fixed block sizes (e.g. 1024 Bytes) to eliminate message length inference.",
+            "<b>Traffic Padding & Dummy Interspersing:</b> Inject periodic dummy packets to obscure timing and frequency analysis.",
+            "<b>Anonymization Routing (Tor / Mixnets):</b> Route traffic through multi-hop mix networks to hide IP address relationships.",
+            "<b>TLS/HTTPS Encapsulation:</b> Wrap TCP traffic in TLS to encrypt transport-layer HTTP headers and defeat deep packet inspection."
+        ]
+        for r in recs:
+            elements.append(Paragraph(f"• {r}", body_style))
+
+        doc.build(elements)
+        return pdf_path

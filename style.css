@@ -1,0 +1,99 @@
+import base64
+import time
+from Crypto.Cipher import AES
+from Crypto.Protocol.KDF import PBKDF2
+from Crypto.Hash import SHA256
+from Crypto.Random import get_random_bytes
+
+class E2EEncryption:
+    """
+    Handles Client-Side Cryptographic Operations:
+    - Key derivation using PBKDF2 (SHA-256, 100k iterations)
+    - Authenticated Encryption using AES-256-GCM
+    - Timing analysis metrics for encryption and decryption performance
+    """
+
+    PBKDF2_ITERATIONS = 100000
+    KEY_SIZE_BYTES = 32  # 256 bits
+    SALT_SIZE_BYTES = 16 # 128 bits
+    NONCE_SIZE_BYTES = 12 # 96 bits standard for GCM
+
+    @classmethod
+    def derive_key(cls, passphrase: str, salt: bytes) -> bytes:
+        """Derives a 256-bit AES key from a passphrase and salt using PBKDF2."""
+        return PBKDF2(
+            password=passphrase,
+            salt=salt,
+            dkLen=cls.KEY_SIZE_BYTES,
+            count=cls.PBKDF2_ITERATIONS,
+            hmac_hash_module=SHA256
+        )
+
+    @classmethod
+    def encrypt(cls, plaintext: str, passphrase: str) -> dict:
+        """
+        Encrypts plaintext using AES-256-GCM with PBKDF2 derived key.
+        Returns a structured dictionary with base64 encoded salt, nonce, tag, ciphertext, and performance timing.
+        """
+        start_time = time.perf_counter()
+
+        # Generate cryptographic random salt and nonce
+        salt = get_random_bytes(cls.SALT_SIZE_BYTES)
+        nonce = get_random_bytes(cls.NONCE_SIZE_BYTES)
+
+        # Derive key
+        key = cls.derive_key(passphrase, salt)
+
+        # AES-GCM Cipher initialization
+        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+        ciphertext, tag = cipher.encrypt_and_digest(plaintext.encode('utf-8'))
+
+        end_time = time.perf_counter()
+        enc_time_ms = round((end_time - start_time) * 1000, 3)
+
+        return {
+            "algorithm": "AES-256-GCM",
+            "pbkdf2_iterations": cls.PBKDF2_ITERATIONS,
+            "salt": base64.b64encode(salt).decode('utf-8'),
+            "nonce": base64.b64encode(nonce).decode('utf-8'),
+            "tag": base64.b64encode(tag).decode('utf-8'),
+            "ciphertext": base64.b64encode(ciphertext).decode('utf-8'),
+            "key_preview": key.hex()[:16] + "...", # Masked hex preview for UI
+            "enc_time_ms": enc_time_ms,
+            "ciphertext_len_bytes": len(ciphertext)
+        }
+
+    @classmethod
+    def decrypt(cls, encrypted_payload: dict, passphrase: str) -> tuple[str, float]:
+        """
+        Decrypts an AES-256-GCM payload and verifies authentication tag integrity.
+        Returns a tuple of (plaintext, decryption_time_ms).
+        Raises ValueError if passphrase is incorrect or payload was tampered with.
+        """
+        start_time = time.perf_counter()
+
+        try:
+            salt = base64.b64decode(encrypted_payload["salt"])
+            nonce = base64.b64decode(encrypted_payload["nonce"])
+            tag = base64.b64decode(encrypted_payload["tag"])
+            ciphertext = base64.b64decode(encrypted_payload["ciphertext"])
+
+            # Re-derive key using salt
+            key = cls.derive_key(passphrase, salt)
+
+            # Initialize AES-GCM cipher with nonce
+            cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+
+            # Decrypt and verify auth tag
+            plaintext_bytes = cipher.decrypt_and_verify(ciphertext, tag)
+            plaintext = plaintext_bytes.decode('utf-8')
+
+            end_time = time.perf_counter()
+            dec_time_ms = round((end_time - start_time) * 1000, 3)
+
+            return plaintext, dec_time_ms
+
+        except (KeyError, TypeError, ValueError) as e:
+            end_time = time.perf_counter()
+            dec_time_ms = round((end_time - start_time) * 1000, 3)
+            raise ValueError(f"Decryption failed: Integrity check failed or invalid passphrase. ({str(e)})")

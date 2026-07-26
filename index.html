@@ -1,0 +1,58 @@
+import argparse
+import sys
+import os
+import requests
+import json
+
+# Add project root to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from client.encryption import E2EEncryption
+
+def main():
+    parser = argparse.ArgumentParser(description="E2EE Auditor - Command Line Sender Client")
+    parser.add_argument("--message", "-m", type=str, required=True, help="Plaintext message to send")
+    parser.add_argument("--password", "-p", type=str, default="securepassword123", help="Shared secret passphrase")
+    parser.add_argument("--sender", "-s", type=str, default="Alice", help="Sender identifier")
+    parser.add_argument("--receiver", "-r", type=str, default="Bob", help="Recipient identifier")
+    parser.add_argument("--server", type=str, default="http://127.0.0.1:5000", help="Relay server URL")
+    parser.add_argument("--no-e2ee", action="store_true", help="Send in plaintext without encryption")
+
+    args = parser.parse_args()
+
+    print(f"\n[Sender] Composing message from '{args.sender}' to '{args.receiver}'...")
+    print(f"[Sender] Plaintext: '{args.message}'")
+
+    if not args.no_e2ee:
+        print("[Sender] Performing Client-Side AES-256-GCM Encryption...")
+        encrypted_payload = E2EEncryption.encrypt(args.message, args.password)
+        payload = {
+            "sender": args.sender,
+            "receiver": args.receiver,
+            "encrypted_payload": encrypted_payload
+        }
+        print(f"[Sender] Encryption complete in {encrypted_payload['enc_time_ms']} ms.")
+        print(f"[Sender] IV/Nonce: {encrypted_payload['nonce']}")
+        print(f"[Sender] Auth Tag: {encrypted_payload['tag']}")
+        print(f"[Sender] Ciphertext: {encrypted_payload['ciphertext']}")
+    else:
+        print("[WARNING] E2EE Disabled. Transmitting in unencrypted plaintext!")
+        payload = {
+            "sender": args.sender,
+            "receiver": args.receiver,
+            "message": args.message
+        }
+
+    # Post to relay server
+    send_url = f"{args.server.rstrip('/')}/send"
+    print(f"[Sender] Transmitting payload to relay server: {send_url}")
+    try:
+        resp = requests.post(send_url, json=payload, timeout=5)
+        if resp.status_code == 200:
+            print(f"[Sender SUCCESS] Response from Relay: {resp.json()}")
+        else:
+            print(f"[Sender ERROR] Server returned HTTP {resp.status_code}: {resp.text}")
+    except Exception as e:
+        print(f"[Sender FAILURE] Could not connect to relay server: {str(e)}")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,89 @@
+class SecurityEngine:
+    """
+    Confidentiality Assessment & Verdict Engine:
+    - Evaluates cryptographic strength vs network metadata leakage.
+    - Computes mathematical audit scores: Encryption Strength, Exposure Score, Side-Channel Index, Confidentiality Index.
+    - Renders final verdict on whether true End-to-End Confidentiality is achieved.
+    """
+
+    @classmethod
+    def assess_security(
+        cls,
+        encryption_enabled: bool = True,
+        algorithm: str = "AES-256-GCM",
+        has_padding: bool = False,
+        uses_anonymization: bool = False,
+        total_packets: int = 0
+    ) -> dict:
+
+        if not encryption_enabled or algorithm == "Plaintext":
+            return {
+                "encryption_score": 0,
+                "exposure_score": 100,
+                "reconstruction_vulnerability": 100,
+                "confidentiality_score": 0,
+                "risk_level": "CRITICAL",
+                "verdict": "VUNLERABLE",
+                "verdict_title": "E2EE Evaluation Failed: Plaintext Transmission Detected",
+                "verdict_description": "Messages are transmitted in plaintext over the wire. Intermediaries, relay servers, and network sniffers can read and reconstruct full message contents, sender/receiver identities, and metadata.",
+                "findings": [
+                    "Message payloads are transmitted in unencrypted plaintext.",
+                    "Relay server can read and tamper with all message contents.",
+                    "Passive network eavesdroppers can capture full plaintext data.",
+                    "Metadata exposure is 100% (IPs, Ports, Timestamps, Payload text visible)."
+                ]
+            }
+
+        # Case: AES-256-GCM E2EE Active
+        enc_score = 100 # AES-256-GCM is mathematically unbroken
+        
+        # Exposure breakdown
+        # Source/Dest IP exposed: 30 pts
+        # Source/Dest Port exposed: 20 pts
+        # Packet Size exposed: 20 pts
+        # Timestamp/Frequency exposed: 20 pts
+        # Payload Content protected: -10 pts deduction
+        exposure_score = 90 if not uses_anonymization else 30
+
+        # Traffic reconstruction vulnerability (Payload length mapping + burst timing)
+        reconstruction_vuln = 75 if not has_padding else 20
+
+        # Confidentiality Score = Weighted calculation
+        # 40% Encryption Strength + 30% Metadata Privacy + 30% Side-Channel Resistance
+        privacy_score = max(0, 100 - exposure_score)
+        side_channel_resilience = max(0, 100 - reconstruction_vuln)
+
+        confidentiality_score = round(
+            (0.40 * enc_score) + (0.30 * privacy_score) + (0.30 * side_channel_resilience),
+            1
+        )
+
+        risk_level = "MEDIUM-HIGH"
+        verdict_status = "PARTIAL"
+        verdict_title = "PARTIAL E2EE CONFIDENTIALITY (Metadata & Traffic Leaks Detected)"
+        verdict_desc = (
+            "While AES-256-GCM successfully guarantees MESSAGE CONTENT CONFIDENTIALITY and INTEGRITY, "
+            "the system FAILS to achieve complete End-to-End Confidentiality. Unauthorized network observers "
+            "and relay servers can inspect packet headers to reconstruct sender/receiver relationships, "
+            "infer exact message lengths from ciphertext sizes, and map conversation frequency over time."
+        )
+
+        findings = [
+            "Payload Confidentiality: SECURE (AES-256-GCM prevents payload contents from being decrypted).",
+            "Integrity Verification: SECURE (128-bit Authentication Tag prevents payload tampering).",
+            "Exposed Metadata: VULNERABLE (Source/Destination IP addresses and TCP ports are fully visible on wire).",
+            "Traffic Reconstruction: VULNERABLE (Ciphertext length maps proportionally to plaintext size; attacker can estimate message length).",
+            "Behavioral Analysis: VULNERABLE (Burst timing and communication frequency reveal active conversation sessions)."
+        ]
+
+        return {
+            "encryption_score": enc_score,
+            "exposure_score": exposure_score,
+            "reconstruction_vulnerability": reconstruction_vuln,
+            "confidentiality_score": confidentiality_score,
+            "risk_level": risk_level,
+            "verdict": verdict_status,
+            "verdict_title": verdict_title,
+            "verdict_description": verdict_desc,
+            "findings": findings
+        }
